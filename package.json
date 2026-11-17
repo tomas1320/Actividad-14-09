@@ -9,6 +9,7 @@
     "lint": "eslint src tests",
     "start": "node dist/server.js",
     "test": "npm run test:unit && npm run test:e2e",
+    "test:api": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/curl-smoke-test.ps1",
     "test:e2e": "cucumber-js",
     "test:unit": "tsx --test tests/unit/coworking.service.test.ts tests/integration/auth.test.ts tests/integration/swagger.test.ts"
   },

@@ -61,6 +61,16 @@ Con el servidor iniciado, abre `http://localhost:3000/api-docs` para explorar y 
 
 Swagger documenta los parámetros, cuerpos de solicitud, respuestas y códigos de error de todas las rutas de la API. En la UI se puede seleccionar **Try it out** para enviar solicitudes al servidor local.
 
+## Pruebas con cURL
+
+Con la API iniciada en una terminal, ejecuta desde otra:
+
+```powershell
+npm run test:api
+```
+
+El script `scripts/curl-smoke-test.ps1` usa `curl.exe` para probar por HTTP las salas públicas, el registro (incluida la protección contra autoasignarse `ADMIN`), login, perfil, rutas protegidas, acceso por rol, creación/listado/cancelación de reservas y liberación de disponibilidad. Usa un email aleatorio en cada ejecución. Si el servidor está en otra dirección, configura `API_BASE_URL`, por ejemplo `$env:API_BASE_URL = "http://localhost:3001"`.
+
 ## Endpoints
 
 | Método | Ruta | Uso |
@@ -104,6 +114,7 @@ El registro ignora cualquier rol enviado en el cuerpo y asigna `USER`. `EDITOR` 
 ```bash
 npm run test:unit
 npm run test:e2e
+npm run test:api
 npm test
 npm run lint
 npm run build
