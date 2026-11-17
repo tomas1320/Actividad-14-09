@@ -110,8 +110,8 @@ Invoke-CurlJson -Method "POST" -Path "/auth/refresh" -ExpectedStatus 401 -Body @
   refreshToken = $previousRefreshToken
 } | Out-Null
 
-$profile = Invoke-CurlJson -Method "GET" -Path "/auth/profile" -ExpectedStatus 200 -Token $token
-if ($profile.Body.id -ne $registration.Body.id -or $profile.Body.role -ne "USER") {
+$currentUserProfile = Invoke-CurlJson -Method "GET" -Path "/auth/profile" -ExpectedStatus 200 -Token $token
+if ($currentUserProfile.Body.id -ne $registration.Body.id -or $currentUserProfile.Body.role -ne "USER") {
   throw "The authenticated profile did not match the registered user."
 }
 
@@ -129,11 +129,11 @@ $booking = Invoke-CurlJson -Method "POST" -Path "/bookings" -ExpectedStatus 201 
   startTime = "10:00"
   endTime = "11:00"
 }
-if ($booking.Body.userId -ne $profile.Body.id) {
+if ($booking.Body.userId -ne $currentUserProfile.Body.id) {
   throw "The booking owner was not derived from the JWT."
 }
 
-$bookings = Invoke-CurlJson -Method "GET" -Path "/users/$($profile.Body.id)/bookings" -ExpectedStatus 200 -Token $token
+$bookings = Invoke-CurlJson -Method "GET" -Path "/users/$($currentUserProfile.Body.id)/bookings" -ExpectedStatus 200 -Token $token
 if ($bookings.Body.Count -ne 1) {
   throw "Expected one booking for the authenticated user."
 }
@@ -148,7 +148,7 @@ $otherLogin = Invoke-CurlJson -Method "POST" -Path "/auth/login" -ExpectedStatus
   email = $otherEmail
   password = "curl-secret-456"
 }
-Invoke-CurlJson -Method "GET" -Path "/users/$($profile.Body.id)/bookings" -ExpectedStatus 404 -Token $otherLogin.Body.accessToken | Out-Null
+Invoke-CurlJson -Method "GET" -Path "/users/$($currentUserProfile.Body.id)/bookings" -ExpectedStatus 404 -Token $otherLogin.Body.accessToken | Out-Null
 
 $cancelled = Invoke-CurlJson -Method "POST" -Path "/bookings/$($booking.Body.id)/cancel" -ExpectedStatus 200 -Token $token
 if ($cancelled.Body.status -ne "CANCELLED") {
