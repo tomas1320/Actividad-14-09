@@ -68,9 +68,18 @@ Criterios de aceptación:
 2. TypeScript se compila en modo estricto.
 3. Cada push y pull request ejecuta lint, compilación y escenarios Cucumber en CI.
 
+### HT-03 — Autenticar y autorizar solicitudes
+Como usuario, quiero iniciar sesión y recibir un JWT para que solo las personas autorizadas puedan acceder a mis reservas.
+
+Criterios de aceptación:
+1. El login valida la contraseña bcrypt y firma un JWT HS256 con expiración; los errores no revelan si el email está registrado.
+2. Las rutas privadas rechazan tokens faltantes, inválidos o expirados; el secreto JWT se configura por entorno y nunca se publica.
+3. El registro siempre asigna `USER`; `USER` accede a sus reservas, `EDITOR` puede leer reservas globales y `ADMIN` puede operar globalmente.
+
 ## Decisiones de alcance
 
 - La persistencia es en memoria y se reinicia al reiniciar el proceso; sirve para el alcance académico y puede reemplazarse por un repositorio persistente.
 - Las salas de demostración se cargan al iniciar la aplicación.
-- Los endpoints identifican al usuario por su `userId`; autenticación/autorización con tokens queda fuera de este alcance.
+- La identidad de las operaciones privadas proviene del JWT, no de un `userId` proporcionado en el cuerpo.
+- El registro público siempre crea `USER`; la asignación de `EDITOR`/`ADMIN` requiere aprovisionamiento confiable fuera de la API pública.
 - Se aplica TDD/BDD: escenarios primero, confirmación de RED, implementación mínima y ejecución en GREEN.

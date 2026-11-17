@@ -10,10 +10,10 @@ Feature: Create a room booking
     Then the response status should be 201
     And the booking status should be "CONFIRMED"
 
-  Scenario: Reject a booking for an unknown user
+  Scenario: Reject a booking without authentication
     Given the coworking rooms are available
-    When I book "Sala A" for unknown user "missing@example.com" on "2026-10-15" from "10:00" to "11:00"
-    Then the response status should be 404
+    When I attempt to book "Sala A" without authentication on "2026-10-15" from "10:00" to "11:00"
+    Then the response status should be 401
 
   Scenario: Reject an invalid booking interval
     Given user "ana@example.com" exists

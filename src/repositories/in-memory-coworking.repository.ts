@@ -37,6 +37,10 @@ export class InMemoryCoworkingRepository implements CoworkingRepository {
       .map((booking) => ({ ...booking }));
   }
 
+  listAllBookings(): Booking[] {
+    return this.bookings.map((booking) => ({ ...booking }));
+  }
+
   findBookingById(id: string): Booking | undefined {
     return this.bookings.find((booking) => booking.id === id);
   }

@@ -7,6 +7,7 @@ export interface CoworkingRepository {
   findUserByEmail(email: string): User | undefined;
   createUser(user: User): User;
   listBookingsForUser(userId: string): Booking[];
+  listAllBookings(): Booking[];
   findBookingById(id: string): Booking | undefined;
   listConfirmedBookingsForRoom(roomId: string, date: string): Booking[];
   createBooking(booking: Booking): Booking;

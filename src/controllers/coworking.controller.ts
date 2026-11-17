@@ -1,9 +1,14 @@
 import { NextFunction, Request, Response } from "express";
 import { AppError } from "../domain/app-error";
+import { AuthenticatedUser } from "../middlewares/auth.middleware";
+import { AuthService } from "../services/auth.service";
 import { CoworkingService } from "../services/coworking.service";
 
 export class CoworkingController {
-  constructor(private readonly service: CoworkingService) {}
+  constructor(
+    private readonly service: CoworkingService,
+    private readonly authService: AuthService
+  ) {}
 
   listRooms = (request: Request, response: Response, next: NextFunction): void => {
     try {
@@ -41,10 +46,29 @@ export class CoworkingController {
     }
   };
 
+  login = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await this.authService.login(request.body?.email, request.body?.password);
+      response.json(result);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  profile = (request: Request, response: Response, next: NextFunction): void => {
+    try {
+      const principal = getPrincipal(request);
+      response.json(this.authService.getProfile(principal.userId));
+    } catch (error) {
+      next(error);
+    }
+  };
+
   createBooking = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
     try {
+      const principal = getPrincipal(request);
       const booking = await this.service.createBooking(
-        request.body?.userId,
+        principal.userId,
         request.body?.roomId,
         request.body?.date,
         request.body?.startTime,
@@ -58,7 +82,12 @@ export class CoworkingController {
 
   cancelBooking = (request: Request, response: Response, next: NextFunction): void => {
     try {
-      const booking = this.service.cancelBooking(pathParameter(request.params.id), request.body?.userId);
+      const principal = getPrincipal(request);
+      const booking = this.service.cancelBooking(
+        pathParameter(request.params.id),
+        principal.userId,
+        principal.role
+      );
       response.json(booking);
     } catch (error) {
       next(error);
@@ -67,7 +96,22 @@ export class CoworkingController {
 
   listBookings = (request: Request, response: Response, next: NextFunction): void => {
     try {
-      response.json(this.service.listBookings(pathParameter(request.params.userId)));
+      const principal = getPrincipal(request);
+      response.json(
+        this.service.listBookings(
+          pathParameter(request.params.userId),
+          principal.userId,
+          principal.role
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  listAllBookings = (_request: Request, response: Response, next: NextFunction): void => {
+    try {
+      response.json(this.service.listAllBookings());
     } catch (error) {
       next(error);
     }
@@ -80,4 +124,11 @@ function queryString(value: unknown): string | undefined {
 
 function pathParameter(value: string | string[]): string {
   return typeof value === "string" ? value : "";
+}
+
+function getPrincipal(request: Request): AuthenticatedUser {
+  if (!request.auth) {
+    throw new AppError(401, "UNAUTHORIZED", "Se requiere un token Bearer válido.");
+  }
+  return request.auth;
 }

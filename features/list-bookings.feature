@@ -10,6 +10,7 @@ Feature: List a user's bookings
     And the response should contain 1 booking
 
   Scenario: Reject a request for a user that does not exist
+    Given user "caller@example.com" exists
     When I list bookings for user "missing@example.com"
     Then the response status should be 404
 
@@ -18,3 +19,9 @@ Feature: List a user's bookings
     When I list bookings for user "ana@example.com"
     Then the response status should be 200
     And the response should contain 0 booking
+
+  Scenario: Do not let a user view another user's bookings
+    Given user "ana@example.com" exists
+    And user "bob@example.com" exists
+    When user "bob@example.com" tries to list bookings of user "ana@example.com"
+    Then the response status should be 404

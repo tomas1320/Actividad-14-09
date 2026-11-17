@@ -9,9 +9,11 @@ const openApiSpec = {
   },
   servers: [{ url: "/", description: "Servidor actual" }],
   tags: [
+    { name: "Auth", description: "Autenticación con JWT" },
     { name: "Rooms", description: "Consulta de salas y disponibilidad" },
     { name: "Users", description: "Registro y reservas por usuario" },
-    { name: "Bookings", description: "Creación y cancelación de reservas" }
+    { name: "Bookings", description: "Creación y cancelación de reservas" },
+    { name: "Management", description: "Consulta global de reservas para EDITOR y ADMIN" }
   ],
   paths: {
     "/rooms": {
@@ -66,10 +68,43 @@ const openApiSpec = {
         }
       }
     },
+    "/auth/login": {
+      post: {
+        tags: ["Auth"],
+        summary: "Iniciar sesión y obtener un JWT",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/LoginRequest" } } }
+        },
+        responses: {
+          "200": {
+            description: "Token firmado y perfil público",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/LoginResponse" } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/auth/profile": {
+      get: {
+        tags: ["Auth"],
+        summary: "Consultar el perfil asociado al token",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Perfil público del usuario autenticado",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/PublicUser" } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" }
+        }
+      }
+    },
     "/users/{userId}/bookings": {
       get: {
         tags: ["Users"],
         summary: "Listar reservas de un usuario",
+        security: [{ bearerAuth: [] }],
         parameters: [
           {
             name: "userId",
@@ -83,6 +118,8 @@ const openApiSpec = {
             description: "Reservas del usuario",
             content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Booking" } } } }
           },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" }
         }
       }
@@ -91,6 +128,7 @@ const openApiSpec = {
       post: {
         tags: ["Bookings"],
         summary: "Crear reserva",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: { "application/json": { schema: { $ref: "#/components/schemas/BookingRequest" } } }
@@ -101,6 +139,8 @@ const openApiSpec = {
             content: { "application/json": { schema: { $ref: "#/components/schemas/Booking" } } }
           },
           "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { description: "La sala ya está reservada en ese intervalo", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } }
         }
@@ -110,6 +150,7 @@ const openApiSpec = {
       post: {
         tags: ["Bookings"],
         summary: "Cancelar reserva",
+        security: [{ bearerAuth: [] }],
         parameters: [
           {
             name: "id",
@@ -118,22 +159,42 @@ const openApiSpec = {
             schema: { type: "string", format: "uuid" }
           }
         ],
-        requestBody: {
-          required: true,
-          content: { "application/json": { schema: { $ref: "#/components/schemas/CancelBookingRequest" } } }
-        },
         responses: {
           "200": {
             description: "Reserva cancelada",
             content: { "application/json": { schema: { $ref: "#/components/schemas/Booking" } } }
           },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { description: "La reserva ya estaba cancelada", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/management/bookings": {
+      get: {
+        tags: ["Management"],
+        summary: "Listar todas las reservas (EDITOR o ADMIN)",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Todas las reservas",
+            content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Booking" } } } }
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" }
         }
       }
     }
   },
   components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT"
+      }
+    },
     schemas: {
       Room: {
         type: "object",
@@ -153,30 +214,41 @@ const openApiSpec = {
           password: { type: "string", format: "password", minLength: 8, writeOnly: true }
         }
       },
+      LoginRequest: {
+        type: "object",
+        required: ["email", "password"],
+        properties: {
+          email: { type: "string", format: "email", example: "ana@example.com" },
+          password: { type: "string", format: "password", writeOnly: true }
+        }
+      },
+      LoginResponse: {
+        type: "object",
+        required: ["token", "user"],
+        properties: {
+          token: { type: "string", description: "JWT Bearer token válido durante una hora" },
+          user: { $ref: "#/components/schemas/PublicUser" }
+        }
+      },
       PublicUser: {
         type: "object",
-        required: ["id", "name", "email"],
+        required: ["id", "name", "email", "role"],
         properties: {
           id: { type: "string", format: "uuid" },
           name: { type: "string" },
-          email: { type: "string", format: "email" }
+          email: { type: "string", format: "email" },
+          role: { type: "string", enum: ["USER", "EDITOR", "ADMIN"] }
         }
       },
       BookingRequest: {
         type: "object",
-        required: ["userId", "roomId", "date", "startTime", "endTime"],
+        required: ["roomId", "date", "startTime", "endTime"],
         properties: {
-          userId: { type: "string", format: "uuid" },
           roomId: { type: "string", example: "room-a" },
           date: { type: "string", format: "date", example: "2026-10-15" },
           startTime: { type: "string", example: "10:00" },
           endTime: { type: "string", example: "11:00" }
         }
-      },
-      CancelBookingRequest: {
-        type: "object",
-        required: ["userId"],
-        properties: { userId: { type: "string", format: "uuid" } }
       },
       Booking: {
         type: "object",
@@ -201,6 +273,14 @@ const openApiSpec = {
       }
     },
     responses: {
+      Unauthorized: {
+        description: "Se requiere un token válido",
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+      },
+      Forbidden: {
+        description: "Token inválido o rol sin permisos",
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+      },
       BadRequest: {
         description: "Datos de entrada inválidos",
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }

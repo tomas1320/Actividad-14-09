@@ -8,14 +8,17 @@ import {
   setWorldConstructor
 } from "@cucumber/cucumber";
 import request, { Response } from "supertest";
-import { createApp } from "../../src/app";
+import { randomUUID } from "node:crypto";
+import { createTestApp } from "../support/test-app";
 import { InMemoryCoworkingRepository } from "../../src/repositories/in-memory-coworking.repository";
 
 class CoworkingWorld extends World {
   repository = new InMemoryCoworkingRepository();
-  app = createApp(this.repository);
+  app = createTestApp(this.repository);
   response?: Response;
   userIds = new Map<string, string>();
+  tokens = new Map<string, string>();
+  activeToken?: string;
   bookingId?: string;
 }
 
@@ -28,6 +31,11 @@ async function registerUser(world: CoworkingWorld, name: string, email: string):
   assert.equal(response.status, 201);
   assert.equal(typeof response.body.id, "string");
   world.userIds.set(email, response.body.id);
+  const login = await request(world.app)
+    .post("/auth/login")
+    .send({ email, password: "secret123" });
+  assert.equal(login.status, 200);
+  world.tokens.set(email, login.body.token);
   return response.body.id;
 }
 
@@ -39,13 +47,18 @@ async function createBooking(
   startTime: string,
   endTime: string
 ): Promise<Response> {
-  const userId = world.userIds.get(email) ?? await registerUser(world, email.split("@")[0], email);
+  if (!world.userIds.has(email)) {
+    await registerUser(world, email.split("@")[0], email);
+  }
+  const token = world.tokens.get(email);
+  assert.ok(token);
   const roomsResponse = await request(world.app).get("/rooms");
   const room = roomsResponse.body.find((candidate: { name: string }) => candidate.name === roomName);
   assert.ok(room);
   const response = await request(world.app)
     .post("/bookings")
-    .send({ userId, roomId: room.id, date, startTime, endTime });
+    .set("Authorization", `Bearer ${token}`)
+    .send({ roomId: room.id, date, startTime, endTime });
   if (response.status === 201) {
     world.bookingId = response.body.id;
   }
@@ -70,6 +83,21 @@ Given(
   "an account exists with email {string}",
   async function (this: CoworkingWorld, email: string) {
     await registerUser(this, "Ana", email);
+  }
+);
+
+When(
+  "I register {string} with email {string}, password {string}, and requested role {string}",
+  async function (
+    this: CoworkingWorld,
+    name: string,
+    email: string,
+    password: string,
+    role: string
+  ) {
+    this.response = await request(this.app)
+      .post("/users")
+      .send({ name, email, password, role });
   }
 );
 
@@ -155,11 +183,10 @@ When(
 );
 
 When(
-  "I book {string} for unknown user {string} on {string} from {string} to {string}",
+  "I attempt to book {string} without authentication on {string} from {string} to {string}",
   async function (
     this: CoworkingWorld,
     roomName: string,
-    email: string,
     date: string,
     startTime: string,
     endTime: string
@@ -169,7 +196,26 @@ When(
     assert.ok(room);
     this.response = await request(this.app)
       .post("/bookings")
-      .send({ userId: "unknown", roomId: room.id, date, startTime, endTime });
+      .send({ roomId: room.id, date, startTime, endTime });
+  }
+);
+
+When(
+  "I attempt to book {string} with an invalid token on {string} from {string} to {string}",
+  async function (
+    this: CoworkingWorld,
+    roomName: string,
+    date: string,
+    startTime: string,
+    endTime: string
+  ) {
+    const roomsResponse = await request(this.app).get("/rooms");
+    const room = roomsResponse.body.find((candidate: { name: string }) => candidate.name === roomName);
+    assert.ok(room);
+    this.response = await request(this.app)
+      .post("/bookings")
+      .set("Authorization", "Bearer invalid.token.value")
+      .send({ roomId: room.id, date, startTime, endTime });
   }
 );
 
@@ -190,13 +236,18 @@ When(
     startTime: string,
     endTime: string
   ) {
-    const userId = this.userIds.get(email) ?? await registerUser(this, email.split("@")[0], email);
+    if (!this.userIds.has(email)) {
+      await registerUser(this, email.split("@")[0], email);
+    }
+    const token = this.tokens.get(email);
+    assert.ok(token);
     const roomsResponse = await request(this.app).get("/rooms");
     const room = roomsResponse.body.find((candidate: { name: string }) => candidate.name === roomName);
     assert.ok(room);
     this.response = await request(this.app)
       .post("/bookings")
-      .send({ userId, roomId: room.id, date, startTime, endTime });
+      .set("Authorization", `Bearer ${token}`)
+      .send({ roomId: room.id, date, startTime, endTime });
   }
 );
 
@@ -210,18 +261,126 @@ Then(
 When(
   "user {string} cancels that booking",
   async function (this: CoworkingWorld, email: string) {
-    const userId = this.userIds.get(email) ?? await registerUser(this, email.split("@")[0], email);
+    if (!this.userIds.has(email)) {
+      await registerUser(this, email.split("@")[0], email);
+    }
+    const token = this.tokens.get(email);
+    assert.ok(token);
     this.response = await request(this.app)
       .post(`/bookings/${this.bookingId}/cancel`)
-      .send({ userId });
+      .set("Authorization", `Bearer ${token}`);
   }
 );
 
 When(
   "I list bookings for user {string}",
   async function (this: CoworkingWorld, email: string) {
+    const token = this.tokens.get(email) ?? this.tokens.values().next().value;
+    if (!token) {
+      await registerUser(this, "Caller", "caller@example.com");
+    }
+    const accessToken = this.tokens.get(email) ?? this.tokens.values().next().value;
     const userId = this.userIds.get(email);
-    this.response = await request(this.app).get(`/users/${userId ?? "unknown"}/bookings`);
+    assert.ok(accessToken);
+    this.response = await request(this.app)
+      .get(`/users/${userId ?? "unknown"}/bookings`)
+      .set("Authorization", `Bearer ${accessToken}`);
+  }
+);
+
+When(
+  "user {string} logs in with password {string}",
+  async function (this: CoworkingWorld, email: string, password: string) {
+    this.response = await request(this.app)
+      .post("/auth/login")
+      .send({ email, password });
+    if (this.response.status === 200) {
+      this.activeToken = this.response.body.token;
+      this.tokens.set(email, this.response.body.token);
+    }
+  }
+);
+
+When(
+  "I request the profile using that token",
+  async function (this: CoworkingWorld) {
+    assert.ok(this.activeToken);
+    this.response = await request(this.app)
+      .get("/auth/profile")
+      .set("Authorization", `Bearer ${this.activeToken}`);
+  }
+);
+
+Then("the response should contain a JWT token", function (this: CoworkingWorld) {
+  assert.match(this.response?.body.token ?? "", /^[\w-]+\.[\w-]+\.[\w-]+$/);
+});
+
+Then("the profile role should be {string}", function (this: CoworkingWorld, role: string) {
+  assert.equal(this.response?.body.role, role);
+});
+
+Then("the registered user role should be {string}", function (this: CoworkingWorld, role: string) {
+  assert.equal(this.response?.body.role, role);
+});
+
+Given(
+  "a trusted {string} account exists with email {string}",
+  async function (this: CoworkingWorld, role: string, email: string) {
+    const trustedRole = role === "ADMIN" ? "ADMIN" : role === "EDITOR" ? "EDITOR" : undefined;
+    assert.ok(trustedRole);
+    this.repository.createUser({
+      id: randomUUID(),
+      name: trustedRole,
+      email,
+      passwordHash: await bcrypt.hash("trusted-role-secret123", 10),
+      role: trustedRole
+    });
+  }
+);
+
+When(
+  "the {string} user {string} requests all bookings",
+  async function (this: CoworkingWorld, _role: string, email: string) {
+    const login = await request(this.app)
+      .post("/auth/login")
+      .send({ email, password: "trusted-role-secret123" });
+    assert.equal(login.status, 200);
+    this.response = await request(this.app)
+      .get("/management/bookings")
+      .set("Authorization", `Bearer ${login.body.token}`);
+  }
+);
+
+When(
+  "the USER {string} requests all bookings",
+  async function (this: CoworkingWorld, email: string) {
+    if (!this.userIds.has(email)) {
+      await registerUser(this, email.split("@")[0], email);
+    }
+    const token = this.tokens.get(email);
+    assert.ok(token);
+    this.response = await request(this.app)
+      .get("/management/bookings")
+      .set("Authorization", `Bearer ${token}`);
+  }
+);
+
+When(
+  "user {string} tries to list bookings of user {string}",
+  async function (this: CoworkingWorld, requesterEmail: string, targetEmail: string) {
+    if (!this.userIds.has(requesterEmail)) {
+      await registerUser(this, requesterEmail.split("@")[0], requesterEmail);
+    }
+    if (!this.userIds.has(targetEmail)) {
+      await registerUser(this, targetEmail.split("@")[0], targetEmail);
+    }
+    const targetId = this.userIds.get(targetEmail);
+    const token = this.tokens.get(requesterEmail);
+    assert.ok(targetId);
+    assert.ok(token);
+    this.response = await request(this.app)
+      .get(`/users/${targetId}/bookings`)
+      .set("Authorization", `Bearer ${token}`);
   }
 );
 

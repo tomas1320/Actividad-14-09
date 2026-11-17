@@ -9,7 +9,10 @@ export interface User {
   name: string;
   email: string;
   passwordHash: string;
+  role: UserRole;
 }
+
+export type UserRole = "USER" | "EDITOR" | "ADMIN";
 
 export type BookingStatus = "CONFIRMED" | "CANCELLED";
 
@@ -27,4 +30,5 @@ export interface PublicUser {
   id: string;
   name: string;
   email: string;
+  role: UserRole;
 }

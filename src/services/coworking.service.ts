@@ -1,8 +1,9 @@
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { AppError } from "../domain/app-error";
-import { Booking, PublicUser, Room, User } from "../domain/models";
+import { Booking, PublicUser, Room, User, UserRole } from "../domain/models";
 import { CoworkingRepository } from "../repositories/coworking.repository";
+import { toPublicUser } from "../domain/user-utils";
 
 export class CoworkingService {
   constructor(private readonly repository: CoworkingRepository) {}
@@ -48,7 +49,8 @@ export class CoworkingService {
       id: randomUUID(),
       name: name.trim(),
       email: normalizedEmail,
-      passwordHash: await bcrypt.hash(password, 10)
+      passwordHash: await bcrypt.hash(password, 10),
+      role: "USER"
     };
     this.repository.createUser(user);
     return toPublicUser(user);
@@ -96,9 +98,9 @@ export class CoworkingService {
     });
   }
 
-  cancelBooking(bookingId: string, userId: unknown): Booking {
+  cancelBooking(bookingId: string, userId: string, role: UserRole): Booking {
     const booking = this.repository.findBookingById(bookingId);
-    if (!booking || typeof userId !== "string" || booking.userId !== userId) {
+    if (!booking || (role !== "ADMIN" && booking.userId !== userId)) {
       throw new AppError(404, "RESOURCE_NOT_FOUND", "La reserva no existe.");
     }
     if (booking.status === "CANCELLED") {
@@ -108,16 +110,19 @@ export class CoworkingService {
     return this.repository.updateBooking({ ...booking, status: "CANCELLED" });
   }
 
-  listBookings(userId: string): Booking[] {
+  listBookings(userId: string, requestingUserId: string, role: UserRole): Booking[] {
     if (!this.repository.findUserById(userId)) {
+      throw new AppError(404, "RESOURCE_NOT_FOUND", "El usuario no existe.");
+    }
+    if (role === "USER" && userId !== requestingUserId) {
       throw new AppError(404, "RESOURCE_NOT_FOUND", "El usuario no existe.");
     }
     return this.repository.listBookingsForUser(userId);
   }
-}
 
-function toPublicUser(user: User): PublicUser {
-  return { id: user.id, name: user.name, email: user.email };
+  listAllBookings(): Booking[] {
+    return this.repository.listAllBookings();
+  }
 }
 
 function isValidDate(value: string): boolean {
