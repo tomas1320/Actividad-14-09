@@ -49,7 +49,7 @@ export class CoworkingService {
       id: randomUUID(),
       name: name.trim(),
       email: normalizedEmail,
-      passwordHash: await bcrypt.hash(password, 10),
+      passwordHash: await bcrypt.hash(password, 12),
       role: "USER"
     };
     this.repository.createUser(user);

@@ -71,7 +71,7 @@ const openApiSpec = {
     "/auth/login": {
       post: {
         tags: ["Auth"],
-        summary: "Iniciar sesión y obtener un JWT",
+        summary: "Iniciar sesión y obtener access y refresh tokens",
         requestBody: {
           required: true,
           content: { "application/json": { schema: { $ref: "#/components/schemas/LoginRequest" } } }
@@ -81,7 +81,39 @@ const openApiSpec = {
             description: "Token firmado y perfil público",
             content: { "application/json": { schema: { $ref: "#/components/schemas/LoginResponse" } } }
           },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "429": { $ref: "#/components/responses/TooManyRequests" }
+        }
+      }
+    },
+    "/auth/refresh": {
+      post: {
+        tags: ["Auth"],
+        summary: "Rotar access y refresh tokens",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/RefreshRequest" } } }
+        },
+        responses: {
+          "200": {
+            description: "Nuevo par de tokens; el refresh token anterior queda revocado",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/TokenPair" } } }
+          },
           "401": { $ref: "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/auth/logout": {
+      post: {
+        tags: ["Auth"],
+        summary: "Revocar un refresh token",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/RefreshRequest" } } }
+        },
+        responses: {
+          "204": { description: "Refresh token revocado" },
+          "400": { $ref: "#/components/responses/BadRequest" }
         }
       }
     },
@@ -224,11 +256,22 @@ const openApiSpec = {
       },
       LoginResponse: {
         type: "object",
-        required: ["token", "user"],
+        required: ["accessToken", "refreshToken", "tokenType", "expiresIn", "user"],
         properties: {
-          token: { type: "string", description: "JWT Bearer token válido durante una hora" },
+          accessToken: { type: "string", description: "JWT Bearer token válido durante 15 minutos" },
+          refreshToken: { type: "string", description: "Token opaco de un solo uso, válido durante siete días" },
+          tokenType: { type: "string", enum: ["Bearer"] },
+          expiresIn: { type: "integer", example: 900 },
           user: { $ref: "#/components/schemas/PublicUser" }
         }
+      },
+      TokenPair: {
+        $ref: "#/components/schemas/LoginResponse"
+      },
+      RefreshRequest: {
+        type: "object",
+        required: ["refreshToken"],
+        properties: { refreshToken: { type: "string", writeOnly: true } }
       },
       PublicUser: {
         type: "object",
@@ -279,6 +322,10 @@ const openApiSpec = {
       },
       Forbidden: {
         description: "Token inválido o rol sin permisos",
+        content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
+      },
+      TooManyRequests: {
+        description: "Se excedió el límite de intentos de inicio de sesión",
         content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } }
       },
       BadRequest: {

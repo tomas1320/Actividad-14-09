@@ -17,6 +17,25 @@ Feature: Authenticate users and authorize access by role
     When user "ana@example.com" logs in with password "wrong-password"
     Then the response status should be 401
 
+  Scenario: Rotate refresh tokens and reject reuse
+    Given user "ana@example.com" exists
+    When user "ana@example.com" logs in with password "secret123"
+    Then the response status should be 200
+    And the response should contain a refresh token
+    When I refresh using the current refresh token
+    Then the response status should be 200
+    And the response should contain a JWT token
+    When I reuse the previous refresh token
+    Then the response status should be 401
+
+  Scenario: Revoke a refresh token on logout
+    Given user "ana@example.com" exists
+    When user "ana@example.com" logs in with password "secret123"
+    And I log out using the current refresh token
+    Then the response status should be 204
+    When I try to refresh after logging out
+    Then the response status should be 401
+
   Scenario: Ignore a client-supplied privileged role during registration
     When I register "Eve" with email "eve@example.com", password "secret123", and requested role "ADMIN"
     Then the response status should be 201

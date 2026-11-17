@@ -1,4 +1,4 @@
-import { Booking, Room, User } from "../domain/models";
+import { Booking, RefreshTokenRecord, Room, User } from "../domain/models";
 
 export interface CoworkingRepository {
   listRooms(): Room[];
@@ -12,4 +12,8 @@ export interface CoworkingRepository {
   listConfirmedBookingsForRoom(roomId: string, date: string): Booking[];
   createBooking(booking: Booking): Booking;
   updateBooking(booking: Booking): Booking;
+  createRefreshToken(token: RefreshTokenRecord): RefreshTokenRecord;
+  findRefreshTokenByHash(tokenHash: string): RefreshTokenRecord | undefined;
+  consumeRefreshToken(tokenHash: string, now: number): RefreshTokenRecord | undefined;
+  revokeRefreshTokenByHash(tokenHash: string, now: number): void;
 }

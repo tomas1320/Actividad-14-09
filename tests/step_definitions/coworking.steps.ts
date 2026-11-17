@@ -19,6 +19,8 @@ class CoworkingWorld extends World {
   userIds = new Map<string, string>();
   tokens = new Map<string, string>();
   activeToken?: string;
+  activeRefreshToken?: string;
+  previousRefreshToken?: string;
   bookingId?: string;
 }
 
@@ -35,7 +37,7 @@ async function registerUser(world: CoworkingWorld, name: string, email: string):
     .post("/auth/login")
     .send({ email, password: "secret123" });
   assert.equal(login.status, 200);
-  world.tokens.set(email, login.body.token);
+  world.tokens.set(email, login.body.accessToken);
   return response.body.id;
 }
 
@@ -295,8 +297,9 @@ When(
       .post("/auth/login")
       .send({ email, password });
     if (this.response.status === 200) {
-      this.activeToken = this.response.body.token;
-      this.tokens.set(email, this.response.body.token);
+      this.activeToken = this.response.body.accessToken;
+      this.activeRefreshToken = this.response.body.refreshToken;
+      this.tokens.set(email, this.response.body.accessToken);
     }
   }
 );
@@ -312,8 +315,59 @@ When(
 );
 
 Then("the response should contain a JWT token", function (this: CoworkingWorld) {
-  assert.match(this.response?.body.token ?? "", /^[\w-]+\.[\w-]+\.[\w-]+$/);
+  assert.match(this.response?.body.accessToken ?? "", /^[\w-]+\.[\w-]+\.[\w-]+$/);
 });
+
+Then("the response should contain a refresh token", function (this: CoworkingWorld) {
+  assert.match(this.response?.body.refreshToken ?? "", /^[\w-]{40,}$/);
+});
+
+When(
+  "I refresh using the current refresh token",
+  async function (this: CoworkingWorld) {
+    assert.ok(this.activeRefreshToken);
+    this.previousRefreshToken = this.activeRefreshToken;
+    this.response = await request(this.app)
+      .post("/auth/refresh")
+      .send({ refreshToken: this.activeRefreshToken });
+    if (this.response.status === 200) {
+      this.activeToken = this.response.body.accessToken;
+      this.activeRefreshToken = this.response.body.refreshToken;
+    }
+  }
+);
+
+When(
+  "I reuse the previous refresh token",
+  async function (this: CoworkingWorld) {
+    assert.ok(this.previousRefreshToken);
+    this.response = await request(this.app)
+      .post("/auth/refresh")
+      .send({ refreshToken: this.previousRefreshToken });
+  }
+);
+
+When(
+  "I log out using the current refresh token",
+  async function (this: CoworkingWorld) {
+    assert.ok(this.activeRefreshToken);
+    this.previousRefreshToken = this.activeRefreshToken;
+    this.response = await request(this.app)
+      .post("/auth/logout")
+      .send({ refreshToken: this.activeRefreshToken });
+    this.activeRefreshToken = undefined;
+  }
+);
+
+When(
+  "I try to refresh after logging out",
+  async function (this: CoworkingWorld) {
+    assert.ok(this.previousRefreshToken);
+    this.response = await request(this.app)
+      .post("/auth/refresh")
+      .send({ refreshToken: this.previousRefreshToken });
+  }
+);
 
 Then("the profile role should be {string}", function (this: CoworkingWorld, role: string) {
   assert.equal(this.response?.body.role, role);
@@ -347,7 +401,7 @@ When(
     assert.equal(login.status, 200);
     this.response = await request(this.app)
       .get("/management/bookings")
-      .set("Authorization", `Bearer ${login.body.token}`);
+      .set("Authorization", `Bearer ${login.body.accessToken}`);
   }
 );
 

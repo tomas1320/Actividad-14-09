@@ -5,8 +5,11 @@ Backend REST para consultar salas y administrar reservas de un espacio de cowork
 ## Funcionalidades
 
 - Registro de usuarios con contraseñas almacenadas mediante bcrypt.
-- Inicio de sesión con JWT firmado y expiración de una hora.
+- Autenticación con access JWT de 15 minutos y refresh tokens opacos de un solo uso, rotados y revocables.
 - Autorización por roles: `USER`, `EDITOR` y `ADMIN`.
+- Endpoints de renovación y cierre de sesión; el servidor persiste únicamente hashes SHA-256 de refresh tokens.
+- Límite de cinco intentos fallidos de login por IP cada 15 minutos.
+- CORS mediante allowlist explícita; producción requiere orígenes HTTPS configurados.
 - Consulta de salas y disponibilidad por fecha y horario.
 - Creación de reservas con validación de intervalos y prevención de solapamientos.
 - Cancelación de reservas y consulta de reservas por usuario.
@@ -46,7 +49,14 @@ npm run dev
 
 `JWT_SECRET` debe tener al menos 32 bytes. No lo guardes en el repositorio ni lo compartas; la aplicación falla al iniciar si falta o es demasiado corto.
 
-La API queda disponible en `http://localhost:3000`. Para compilar y ejecutar la versión compilada:
+En desarrollo, CORS permite `http://localhost:3000` y `http://127.0.0.1:3000` por defecto. En producción, configura una lista separada por comas de orígenes HTTPS antes de iniciar:
+
+```powershell
+$env:NODE_ENV = "production"
+$env:CORS_ALLOWED_ORIGINS = "https://app.example.com"
+```
+
+La API debe servirse detrás de HTTPS en producción (por ejemplo, mediante un proxy inverso). No uses `*` en la allowlist. La API queda disponible en `http://localhost:3000` durante el desarrollo local. Para compilar y ejecutar la versión compilada:
 
 ```bash
 npm run build
@@ -69,7 +79,7 @@ Con la API iniciada en una terminal, ejecuta desde otra:
 npm run test:api
 ```
 
-El script `scripts/curl-smoke-test.ps1` usa `curl.exe` para probar por HTTP las salas públicas, el registro (incluida la protección contra autoasignarse `ADMIN`), login, perfil, rutas protegidas, acceso por rol, creación/listado/cancelación de reservas y liberación de disponibilidad. Usa un email aleatorio en cada ejecución. Si el servidor está en otra dirección, configura `API_BASE_URL`, por ejemplo `$env:API_BASE_URL = "http://localhost:3001"`.
+El script `scripts/curl-smoke-test.ps1` usa `curl.exe` para probar registro, login, rotación y revocación de refresh tokens, perfil, RBAC, creación/listado/cancelación de reservas, liberación de disponibilidad y el rechazo de acceso a las reservas de otro usuario (IDOR). Usa emails aleatorios en cada ejecución. Si el servidor está en otra dirección, configura `API_BASE_URL`, por ejemplo `$env:API_BASE_URL = "http://localhost:3001"`.
 
 ## Endpoints
 
@@ -78,7 +88,9 @@ El script `scripts/curl-smoke-test.ps1` usa `curl.exe` para probar por HTTP las 
 | `GET` | `/rooms` | Listar las salas |
 | `GET` | `/rooms?date=2026-10-15&startTime=10:00&endTime=11:00` | Consultar disponibilidad |
 | `POST` | `/users` | Registrar usuario (`name`, `email`, `password`); siempre crea rol `USER` |
-| `POST` | `/auth/login` | Iniciar sesión y recibir `{ token, user }` |
+| `POST` | `/auth/login` | Iniciar sesión y recibir `{ accessToken, refreshToken, tokenType, expiresIn, user }` |
+| `POST` | `/auth/refresh` | Rotar refresh token y recibir un nuevo par de tokens |
+| `POST` | `/auth/logout` | Revocar un refresh token |
 | `GET` | `/auth/profile` | Ver perfil (JWT requerido) |
 | `POST` | `/bookings` | Reservar (`roomId`, `date`, `startTime`, `endTime`); el titular se obtiene del JWT |
 | `POST` | `/bookings/:id/cancel` | Cancelar reserva propia; `ADMIN` puede cancelar cualquiera |
@@ -99,7 +111,9 @@ Las contraseñas y sus hashes nunca se incluyen en las respuestas. Los errores u
 
 ## Autenticación y autorización
 
-Registro e inicio de sesión son públicos; también lo es la consulta de salas. Las demás rutas protegidas requieren `Authorization: Bearer <token>`. Los tokens se firman con HS256, duran una hora y contienen el ID y rol del usuario. La identidad para reservar y cancelar se obtiene del JWT, nunca de un `userId` enviado por el cliente.
+Registro e inicio de sesión son públicos; también lo es la consulta de salas. Las demás rutas protegidas requieren `Authorization: Bearer <accessToken>`. El access token se firma con HS256 y expira en 15 minutos. El refresh token aleatorio expira en siete días, se almacena como hash SHA-256, solo puede utilizarse una vez y se revoca al rotarlo o cerrar sesión. Una contraseña incorrecta cuenta para el límite de cinco intentos de login por IP durante 15 minutos; los logins exitosos no cuentan. Los intentos excedentes reciben `429`.
+
+La identidad para reservar y cancelar se obtiene del JWT, nunca de un `userId` enviado por el cliente. Un usuario que intente consultar las reservas de otra persona recibe `404`, evitando revelar si el recurso existe. JWT_SECRET debe ser secreto y tener al menos 32 bytes.
 
 | Rol | Permisos |
 | --- | --- |
@@ -121,7 +135,7 @@ npm run build
 ```
 
 - `tests/unit/`: pruebas directas de las reglas de negocio del servicio.
-- `tests/integration/`: verificación HTTP de JWT, RBAC, OpenAPI y Swagger UI.
+- `tests/integration/`: verificación HTTP de JWT (incluida expiración), refresh/revocación, límite de login, CORS, RBAC, OpenAPI y Swagger UI.
 - `features/`: historias funcionales y escenarios BDD de autenticación/autorización, con casos felices y de error/límite.
 - `tests/step_definitions/`: implementación TypeScript de los pasos Cucumber.
 - `npm test`: ejecuta las pruebas unitarias/de integración y luego los escenarios BDD.
@@ -135,6 +149,8 @@ El workflow [.github/workflows/main.yml](./.github/workflows/main.yml) se ejecut
 ## Decisiones y límites del alcance
 
 - La persistencia en memoria simplifica la actividad y se reinicia al reiniciar el proceso.
+- Los refresh tokens y el limitador también son en memoria; en despliegues con varias instancias deben reemplazarse por almacenamiento compartido y un store distribuido.
+- La aplicación valida orígenes CORS, pero el despliegue debe terminar TLS con HTTPS.
 - Las salas de demostración se cargan al iniciar la aplicación.
 - El registro público siempre crea `USER`; asignar `EDITOR` o `ADMIN` requiere aprovisionamiento de confianza.
 - Se priorizó el diseño simple y el alcance académico: no se incorporaron base de datos ni servicios externos.

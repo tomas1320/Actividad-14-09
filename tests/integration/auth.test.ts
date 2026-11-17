@@ -42,7 +42,7 @@ describe("JWT authentication and role authorization", () => {
       .send({ email: "ana@example.com", password: "secret123" });
 
     assert.equal(login.status, 200);
-    assert.equal(typeof login.body.token, "string");
+    assert.equal(typeof login.body.accessToken, "string");
 
     const unauthenticated = await request(app)
       .post("/bookings")
@@ -57,7 +57,7 @@ describe("JWT authentication and role authorization", () => {
 
     const authenticated = await request(app)
       .post("/bookings")
-      .set("Authorization", `Bearer ${login.body.token}`)
+      .set("Authorization", `Bearer ${login.body.accessToken}`)
       .send({
         userId: "forged-user-id",
         roomId: "room-a",
@@ -116,7 +116,7 @@ describe("JWT authentication and role authorization", () => {
       .send({ email: "ana@example.com", password: "secret123" });
     const booking = await request(app)
       .post("/bookings")
-      .set("Authorization", `Bearer ${userLogin.body.token}`)
+      .set("Authorization", `Bearer ${userLogin.body.accessToken}`)
       .send({
         roomId: "room-a",
         date: "2026-10-15",
@@ -136,7 +136,7 @@ describe("JWT authentication and role authorization", () => {
       .send({ email: "admin@example.com", password: "admin-secret123" });
     const cancellation = await request(app)
       .post(`/bookings/${booking.body.id}/cancel`)
-      .set("Authorization", `Bearer ${adminLogin.body.token}`);
+      .set("Authorization", `Bearer ${adminLogin.body.accessToken}`);
 
     assert.equal(registration.status, 201);
     assert.equal(booking.status, 201);
@@ -156,7 +156,7 @@ describe("JWT authentication and role authorization", () => {
 
     const userResponse = await request(app)
       .get("/management/bookings")
-      .set("Authorization", `Bearer ${login.body.token}`);
+      .set("Authorization", `Bearer ${login.body.accessToken}`);
     assert.equal(userResponse.status, 403);
 
     repository.createUser({
@@ -172,7 +172,7 @@ describe("JWT authentication and role authorization", () => {
       .send({ email: "editor@example.com", password: "editor-secret123" });
     const editorResponse = await request(app)
       .get("/management/bookings")
-      .set("Authorization", `Bearer ${editorLogin.body.token}`);
+      .set("Authorization", `Bearer ${editorLogin.body.accessToken}`);
 
     assert.equal(editorResponse.status, 200);
     assert.deepEqual(editorResponse.body, []);

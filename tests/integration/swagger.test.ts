@@ -14,6 +14,8 @@ describe("Swagger API documentation", () => {
     assert.ok(response.body.paths["/bookings"]);
     assert.ok(response.body.paths["/bookings/{id}/cancel"]);
     assert.ok(response.body.paths["/auth/login"]);
+    assert.ok(response.body.paths["/auth/refresh"]);
+    assert.ok(response.body.paths["/auth/logout"]);
     assert.ok(response.body.paths["/management/bookings"]);
     assert.deepEqual(response.body.paths["/bookings"].post.security, [{ bearerAuth: [] }]);
     assert.equal(response.body.components.securitySchemes.bearerAuth.scheme, "bearer");

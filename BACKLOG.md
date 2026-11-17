@@ -56,7 +56,7 @@ Criterios de aceptación:
 Como auditor de seguridad, quiero que las contraseñas se almacenen con bcrypt y que las respuestas públicas no expongan secretos para reducir el impacto de una filtración.
 
 Criterios de aceptación:
-1. Ninguna contraseña se persiste en texto plano.
+1. Las contraseñas se hashean con bcrypt y costo 12; ninguna se persiste en texto plano.
 2. Ninguna respuesta de la API incluye la contraseña ni su hash.
 3. La validación rechaza campos requeridos inválidos con errores controlados, sin filtrar detalles internos.
 
@@ -69,17 +69,27 @@ Criterios de aceptación:
 3. Cada push y pull request ejecuta lint, compilación y escenarios Cucumber en CI.
 
 ### HT-03 — Autenticar y autorizar solicitudes
-Como usuario, quiero iniciar sesión y recibir un JWT para que solo las personas autorizadas puedan acceder a mis reservas.
+Como usuario, quiero autenticarme con tokens de vida limitada y permisos por rol para que solo las personas autorizadas puedan acceder a mis reservas.
 
 Criterios de aceptación:
-1. El login valida la contraseña bcrypt y firma un JWT HS256 con expiración; los errores no revelan si el email está registrado.
-2. Las rutas privadas rechazan tokens faltantes, inválidos o expirados; el secreto JWT se configura por entorno y nunca se publica.
-3. El registro siempre asigna `USER`; `USER` accede a sus reservas, `EDITOR` puede leer reservas globales y `ADMIN` puede operar globalmente.
+1. El login valida la contraseña bcrypt y entrega un access JWT HS256 de 15 minutos y un refresh token aleatorio válido por siete días; solo se guarda el hash del refresh token.
+2. Renovar consume el refresh token anterior y entrega uno nuevo; cerrar sesión lo revoca, y un token consumido, revocado o expirado se rechaza.
+3. Las rutas privadas rechazan tokens faltantes, inválidos o expirados; los errores de login no revelan si el email está registrado.
+4. El registro siempre asigna `USER`; `USER` accede a sus reservas, `EDITOR` puede leer reservas globales y `ADMIN` puede operar globalmente.
+
+### HT-04 — Endurecer el perímetro de la API
+Como responsable de seguridad, quiero limitar intentos de login y restringir los orígenes web permitidos para reducir abuso y exposición de credenciales.
+
+Criterios de aceptación:
+1. El login permite como máximo cinco intentos fallidos por IP en 15 minutos y luego responde `429`; los logins exitosos no incrementan el límite.
+2. CORS permite solo orígenes explícitos, rechaza `*`, y en producción exige una lista de orígenes HTTPS.
+3. La suite HTTP demuestra rechazo de tokens expirados y acceso de un usuario a reservas ajenas; el smoke test cURL cubre este último caso.
 
 ## Decisiones de alcance
 
 - La persistencia es en memoria y se reinicia al reiniciar el proceso; sirve para el alcance académico y puede reemplazarse por un repositorio persistente.
 - Las salas de demostración se cargan al iniciar la aplicación.
 - La identidad de las operaciones privadas proviene del JWT, no de un `userId` proporcionado en el cuerpo.
+- El almacenamiento en memoria del limiter y refresh tokens es para la actividad; un despliegue multi-instancia requiere stores compartidos.
 - El registro público siempre crea `USER`; la asignación de `EDITOR`/`ADMIN` requiere aprovisionamiento confiable fuera de la API pública.
 - Se aplica TDD/BDD: escenarios primero, confirmación de RED, implementación mínima y ejecución en GREEN.

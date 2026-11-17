@@ -1,4 +1,4 @@
-import { Booking, Room, User } from "../domain/models";
+import { Booking, RefreshTokenRecord, Room, User } from "../domain/models";
 import { CoworkingRepository } from "./coworking.repository";
 
 export class InMemoryCoworkingRepository implements CoworkingRepository {
@@ -9,6 +9,7 @@ export class InMemoryCoworkingRepository implements CoworkingRepository {
 
   private readonly users: User[] = [];
   private readonly bookings: Booking[] = [];
+  private readonly refreshTokens: RefreshTokenRecord[] = [];
 
   listRooms(): Room[] {
     return [...this.rooms];
@@ -63,5 +64,43 @@ export class InMemoryCoworkingRepository implements CoworkingRepository {
     const index = this.bookings.findIndex((existing) => existing.id === booking.id);
     this.bookings[index] = booking;
     return booking;
+  }
+
+  createRefreshToken(token: RefreshTokenRecord): RefreshTokenRecord {
+    this.removeInactiveRefreshTokens(Date.now());
+    this.refreshTokens.push(token);
+    return { ...token };
+  }
+
+  findRefreshTokenByHash(tokenHash: string): RefreshTokenRecord | undefined {
+    const token = this.refreshTokens.find((record) => record.tokenHash === tokenHash);
+    return token ? { ...token } : undefined;
+  }
+
+  consumeRefreshToken(tokenHash: string, now: number): RefreshTokenRecord | undefined {
+    this.removeInactiveRefreshTokens(now);
+    const token = this.refreshTokens.find((record) => record.tokenHash === tokenHash);
+    if (!token || token.revokedAt !== undefined || token.expiresAt <= now) {
+      return undefined;
+    }
+
+    token.revokedAt = now;
+    return { ...token };
+  }
+
+  revokeRefreshTokenByHash(tokenHash: string, now: number): void {
+    const token = this.refreshTokens.find((record) => record.tokenHash === tokenHash);
+    if (token && token.revokedAt === undefined) {
+      token.revokedAt = now;
+    }
+  }
+
+  private removeInactiveRefreshTokens(now: number): void {
+    for (let index = this.refreshTokens.length - 1; index >= 0; index -= 1) {
+      const token = this.refreshTokens[index];
+      if (token.revokedAt !== undefined || token.expiresAt <= now) {
+        this.refreshTokens.splice(index, 1);
+      }
+    }
   }
 }

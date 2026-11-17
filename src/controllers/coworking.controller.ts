@@ -55,6 +55,24 @@ export class CoworkingController {
     }
   };
 
+  refresh = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      const tokens = await this.authService.refresh(request.body?.refreshToken);
+      response.json(tokens);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  logout = (request: Request, response: Response, next: NextFunction): void => {
+    try {
+      this.authService.logout(request.body?.refreshToken);
+      response.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  };
+
   profile = (request: Request, response: Response, next: NextFunction): void => {
     try {
       const principal = getPrincipal(request);
