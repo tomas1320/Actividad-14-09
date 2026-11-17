@@ -1,0 +1,33 @@
+{
+  "name": "coworking-xp-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API de reservas de coworking desarrollada con prácticas XP y BDD",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "lint": "eslint src tests",
+    "start": "node dist/server.js",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:e2e": "cucumber-js",
+    "test:unit": "tsx --test tests/unit/coworking.service.test.ts tests/integration/swagger.test.ts"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "express": "^5.1.0",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^13.3.0",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "@types/supertest": "^6.0.3",
+    "eslint": "^9.35.0",
+    "supertest": "^7.1.4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.44.0",
+    "@types/swagger-ui-express": "^4.1.8"
+  }
+}
